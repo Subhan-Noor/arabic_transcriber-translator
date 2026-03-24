@@ -1,83 +1,127 @@
-# YouTube Arabic Transcriber (CLI)
+# YouTube Arabic Transcriber
 
-This is currently a **transcription-only** CLI tool. It:
+A command-line tool that transcribes Arabic (and mixed Arabic/English) audio from
+YouTube videos or local media files using **Faster-Whisper**.
 
-- Downloads a YouTube video.
-- Transcribes Arabic (and mostly-Arabic) audio using **Faster-Whisper**.
-- Saves both a plain Arabic transcript and a version with timestamps.
+Each run produces a self-contained output folder so nothing is ever overwritten.
 
-> **Note:** LLM-based Arabic cleanup and translation (Arabic → English) are a **work in progress** and are currently disabled in `run.py`. The code for those stages exists (`clean_arabic.py`, `translate.py`, `clean_english.py`), but they are not executed by default.
+## Output structure
 
-Per run, `run.py` currently produces:
+```
+outputs/
+  some_video_title/
+    audio.mp3                        # downloaded / extracted audio
+    transcript_raw_ar.txt            # plain Arabic transcript
+    transcript_raw_ar_timestamps.txt # transcript with [MM:SS-MM:SS] markers
+  another_lecture/
+    audio.mp3
+    transcript_raw_ar.txt
+    transcript_raw_ar_timestamps.txt
+```
 
-- `video.mp3`
-- `transcript_raw_ar.txt`
-- `transcript_raw_ar_timestamps.txt`
+> **Work in progress:** LLM-based Arabic cleanup, Arabic → English translation,
+> and English polishing are planned features. The transcription pipeline is
+> fully functional today.
 
-## 1. Environment setup
+---
 
-From the `youtube-translator` folder:
+## 1. Prerequisites
+
+### Python 3.11+
 
 ```bash
 py -3.11 -m venv .venv
-.venv\Scripts\activate
+.venv\Scripts\activate          # Windows
+# source .venv/bin/activate     # macOS / Linux
 
 python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 ```
 
-Make sure you installed the **CUDA** build of PyTorch so Faster-Whisper can use your RTX 3070:
+### PyTorch with CUDA (NVIDIA GPU)
 
 ```bash
 pip install torch --index-url https://download.pytorch.org/whl/cu128
 ```
 
-You can adjust the CUDA index URL (`cu128`, `cu126`, `cu121`) based on what works best on your machine.
+Adjust the index URL to match your CUDA version (`cu128`, `cu126`, `cu121`).
+Run `python check_cuda.py` to verify your setup.
 
-## 2. (Optional) Ollama setup for future translation
+### ffmpeg (required)
 
-The project includes scaffolding for Arabic cleanup and translation using **Ollama**, but those steps are not run by default.
-If you want to experiment with them later:
+ffmpeg is used by both `yt-dlp` (audio extraction from YouTube) and this tool
+(audio extraction from local video files).
 
-```bash
-ollama pull command-r7b-arabic:7b   # Arabic cleanup + translation
-ollama pull qwen3:8b               # English polishing
-ollama serve
+```
+# Windows
+winget install ffmpeg
+
+# macOS
+brew install ffmpeg
+
+# Debian / Ubuntu
+sudo apt install ffmpeg
 ```
 
-The scripts assume Ollama is listening on `http://localhost:11434`. You can change this and the model names in `config.py`.
+---
 
-## 3. Usage
+## 2. Usage
 
-From the `youtube-translator` directory, with your virtualenv activated:
-
-```bash
-python run.py "<youtube-url>"
-```
-
-Example:
+### Transcribe a YouTube video
 
 ```bash
 python run.py "https://www.youtube.com/watch?v=xhGThib15IU"
 ```
 
-This will:
+### Transcribe a local video or audio file
 
-1. Download the video audio to `video.mp3`.
-2. Transcribe it with Faster-Whisper → `transcript_raw_ar.txt` and `transcript_raw_ar_timestamps.txt`.
+Any format ffmpeg understands is accepted: `.mp4`, `.mkv`, `.mov`, `.avi`,
+`.webm`, `.mp3`, `.wav`, `.flac`, `.m4a`, …
 
-You can also run individual steps:
+```bash
+python run.py lecture.mp4
+python run.py recording.mp3
+```
 
-- Transcription only (writes `transcript_raw_ar.txt` + `transcript_raw_ar_timestamps.txt`):
+### Options
 
-  ```bash
-  python transcribe.py
-  ```
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--model SIZE` | Faster-Whisper model: `tiny` `base` `small` `medium` `large-v2` | `large-v2` (set in `config.py`) |
+| `--device cuda\|cpu` | Inference device | `cuda` (set in `config.py`) |
+| `--language LANG` | Whisper language code. Pass `none` to auto-detect | `ar` |
 
-> Arabic cleanup (`clean_arabic.py`), translation (`translate.py`), and English polishing (`clean_english.py`) are present but considered **experimental** and are not part of the default `run.py` flow.
+```bash
+# Use a smaller/faster model on CPU
+python run.py lecture.mp4 --model medium --device cpu
 
-## 4. Tuning transcription quality and speed
+# Auto-detect language (mixed Arabic/English video)
+python run.py lecture.mp4 --language none
+```
 
-- **Faster-Whisper** settings are in `config.py` (`FW_MODEL_SIZE`, `FW_DEVICE`).
-  - You currently use `"large-v2"` on GPU for best quality; you can switch to `"medium"` or `"small"` for faster runs if needed.
+### Transcribe only (skip download)
 
+If you already have an audio file and just want a transcript:
+
+```bash
+python transcribe.py lecture.mp3 --output-dir outputs/my_lecture
+```
+
+---
+
+## 3. Tuning quality and speed
+
+All defaults live in `config.py`:
+
+| Setting | Default | Notes |
+|---------|---------|-------|
+| `FW_MODEL_SIZE` | `"large-v2"` | Best quality for Arabic. Use `"medium"` for faster runs. |
+| `FW_DEVICE` | `"cuda"` | Switch to `"cpu"` if no GPU is available. |
+
+---
+
+## 4. Checking your GPU
+
+```bash
+python check_cuda.py
+```

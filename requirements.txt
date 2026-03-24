@@ -1,5 +1,4 @@
 faster-whisper
 yt-dlp
 torch
-requests
 

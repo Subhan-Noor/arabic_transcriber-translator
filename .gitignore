@@ -21,11 +21,6 @@ env/
 .DS_Store
 Thumbs.db
 
-# Project outputs
-video.mp3
-transcript_raw_ar.txt
-transcript_raw_ar_timestamps.txt
-transcript_clean_ar.txt
-translation_en.txt
-translation_en_polished.txt
+# Per-run transcription outputs
+outputs/
 
