@@ -9,8 +9,8 @@ Given a YouTube URL or a local video/audio file, this script:
 Usage:
     python run.py "<youtube-url>"
     python run.py /path/to/lecture.mp4
-    python run.py lecture.mp3 --language ar
-    python run.py lecture.mp4 --model medium --device cpu
+    python run.py lecture.mp4 --language ar
+    python run.py lecture.mp4 --start 8:00 --end 25:00
 """
 
 from __future__ import annotations
@@ -20,9 +20,10 @@ import re
 import sys
 from pathlib import Path
 
-from audio import extract_audio
+from audio import extract_audio, probe_media_duration
 from config import OUTPUTS_DIR
 from download import download_mp3
+from timecode import format_segment_folder_label, format_timestamp, parse_timestamp
 from transcribe import safe_print, transcribe
 
 
@@ -55,6 +56,54 @@ def _unique_dir(base: Path) -> Path:
         counter += 1
 
 
+def _resolve_segment(
+    media_path: Path,
+    start_raw: str | None,
+    end_raw: str | None,
+) -> tuple[float | None, float | None]:
+    """
+    Parse CLI time strings and clamp to *media_path* duration when known.
+
+    Returns ``(start_sec, end_sec)`` where each may be ``None`` for
+    "from beginning" / "to end of file" when no segment was requested.
+    """
+    if start_raw is None and end_raw is None:
+        return None, None
+
+    start_s = parse_timestamp(start_raw) if start_raw else 0.0
+    end_s = parse_timestamp(end_raw) if end_raw else None
+
+    dur = probe_media_duration(media_path)
+
+    if end_s is None:
+        if dur is not None:
+            end_s = dur
+    elif dur is not None and end_s > dur:
+        print(
+            f"  Warning: --end {format_timestamp(end_s)} is past file end "
+            f"({format_timestamp(dur)}); clamped.",
+            flush=True,
+        )
+        end_s = dur
+
+    if dur is not None and start_s >= dur:
+        print(
+            f"Error: --start {format_timestamp(start_s)} is at or past the end "
+            f"of the media ({format_timestamp(dur)}).",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    if end_s is not None and start_s >= end_s:
+        print(
+            "Error: start time must be before end time.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    return start_s, end_s
+
+
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
@@ -70,6 +119,9 @@ examples:
   python run.py lecture.mp4
   python run.py lecture.mp4 --model medium --device cpu
   python run.py lecture.mp4 --language none   # auto-detect language
+  python run.py talk.mp4 --start 8:00 --end 25:00
+  python run.py intro.mp4 --end 1:30        # from 0:00 through 1:30
+  python run.py clip.mp4 --start 0:45         # from 0:45 to end of file
         """,
     )
     parser.add_argument(
@@ -97,6 +149,20 @@ examples:
         help="Whisper language code (e.g. 'ar', 'en'). "
              "Pass 'none' to let Whisper auto-detect. Default: ar.",
     )
+    parser.add_argument(
+        "--start",
+        metavar="TIME",
+        default=None,
+        help="Transcribe from this time onward. "
+             "Formats: SS, M:SS, MM:SS, or H:MM:SS (e.g. 8:00, 0:35, 1:25:00).",
+    )
+    parser.add_argument(
+        "--end",
+        metavar="TIME",
+        default=None,
+        help="Transcribe up to this time (same formats as --start). "
+             "Omit for end of file.",
+    )
     return parser
 
 
@@ -111,20 +177,29 @@ def main() -> None:
     # Step 1 — acquire audio and determine the output folder name
     # ------------------------------------------------------------------
     if _is_url(args.input):
-        print("Detected YouTube URL — downloading audio …", flush=True)
+        print("\n[1/2] Downloading audio …", flush=True)
         title, tmp_audio = download_mp3(args.input)
-        folder_name = _slugify(title)
+        base_folder = _slugify(title)
+        probe_path = tmp_audio
     else:
         src = Path(args.input)
         if not src.exists():
             print(f"Error: file not found: {src}", file=sys.stderr)
             sys.exit(1)
-        folder_name = _slugify(src.stem)
-        tmp_audio = None  # resolved below once output_dir is known
+        base_folder = _slugify(src.stem)
+        tmp_audio = None
+        probe_path = src
 
-    output_dir = _unique_dir(OUTPUTS_DIR / folder_name)
+    start_s: float | None
+    end_s: float | None
+    start_s, end_s = _resolve_segment(probe_path, args.start, args.end)
+
+    if args.start is not None or args.end is not None:
+        base_folder = f"{base_folder}_{format_segment_folder_label(start_s, end_s)}"
+
+    output_dir = _unique_dir(OUTPUTS_DIR / base_folder)
     output_dir.mkdir(parents=True, exist_ok=True)
-    print(f"Output folder: {output_dir}", flush=True)
+    print(f"  Output folder: {output_dir}", flush=True)
 
     # ------------------------------------------------------------------
     # Step 2 — place audio in the output folder
@@ -132,18 +207,18 @@ def main() -> None:
     audio_dest = output_dir / "audio.mp3"
 
     if _is_url(args.input):
-        # Move the temp download into the run folder
         tmp_audio.rename(audio_dest)
         audio_path = audio_dest
+        print("  Audio saved.", flush=True)
     else:
         src = Path(args.input)
-        print(f"Extracting audio from '{src.name}' …", flush=True)
+        print(f"\n[1/2] Extracting audio from '{src.name}' …", flush=True)
         audio_path = extract_audio(src, audio_dest)
 
     # ------------------------------------------------------------------
     # Step 3 — transcribe
     # ------------------------------------------------------------------
-    print("Transcribing (each segment prints as it completes) …", flush=True)
+    print("\n[2/2] Transcribing …", flush=True)
     text = transcribe(
         audio_path,
         output_dir=output_dir,
@@ -151,9 +226,11 @@ def main() -> None:
         device=args.device,
         language=lang,
         verbose=True,
+        start_sec=start_s,
+        end_sec=end_s,
     )
 
-    print(f"\nDone. All outputs saved to: {output_dir}", flush=True)
+    print(f"\nDone. Outputs saved to: {output_dir}", flush=True)
     safe_print(text)
 
 

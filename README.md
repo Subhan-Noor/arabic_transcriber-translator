@@ -12,7 +12,7 @@ outputs/
   some_video_title/
     audio.mp3                        # downloaded / extracted audio
     transcript_raw_ar.txt            # plain Arabic transcript
-    transcript_raw_ar_timestamps.txt # transcript with [MM:SS-MM:SS] markers
+    transcript_raw_ar_timestamps.txt # [MM:SS-MM:SS] or [H:MM:SS-H:MM:SS] markers
   another_lecture/
     audio.mp3
     transcript_raw_ar.txt
@@ -90,6 +90,8 @@ python run.py recording.mp3
 | `--model SIZE` | Faster-Whisper model: `tiny` `base` `small` `medium` `large-v2` | `large-v2` (set in `config.py`) |
 | `--device cuda\|cpu` | Inference device | `cuda` (set in `config.py`) |
 | `--language LANG` | Whisper language code. Pass `none` to auto-detect | `ar` |
+| `--start TIME` | Begin transcribing at this timestamp | start of file |
+| `--end TIME` | Stop at this timestamp | end of file |
 
 ```bash
 # Use a smaller/faster model on CPU
@@ -99,12 +101,36 @@ python run.py lecture.mp4 --model medium --device cpu
 python run.py lecture.mp4 --language none
 ```
 
+### Transcribe part of a video (time range)
+
+Use `--start` and/or `--end` with the same time formats you would use in a player:
+
+| Form | Meaning | Example |
+|------|---------|---------|
+| `SS` | seconds only | `45` → 45 seconds |
+| `M:SS` / `MM:SS` | minutes and seconds | `8:00`, `0:35` |
+| `H:MM:SS` | hours, minutes, seconds | `1:25:00` |
+
+```bash
+# From 8:00 through 25:00 (timestamps in the transcript match the original video)
+python run.py lecture.mp4 --start 8:00 --end 25:00
+
+# First 90 seconds
+python run.py clip.mp4 --end 1:30
+
+# From 0:45 through the end of the file (output folder name includes the time range)
+python run.py clip.mp4 --start 0:45
+```
+
+The full audio file is still downloaded or extracted; only the chosen window is sent to Whisper. If `ffprobe` can read the duration, `--end` is clamped to the file length and the output folder name includes the range (e.g. `…_8m00s-25m00s`).
+
 ### Transcribe only (skip download)
 
 If you already have an audio file and just want a transcript:
 
 ```bash
 python transcribe.py lecture.mp3 --output-dir outputs/my_lecture
+python transcribe.py lecture.mp3 --output-dir outputs/snippet --start 2:00 --end 5:30
 ```
 
 ---
