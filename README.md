@@ -1,33 +1,64 @@
-# YouTube Arabic Transcriber
+# Arabic Audio/Video Transcriber & Subtitler
 
-A command-line tool that transcribes Arabic (and mixed Arabic/English) audio from
-YouTube videos or local media files using **Faster-Whisper**.
+Transcribe Arabic (and mixed Arabic/English) speech from YouTube videos or local
+audio/video files using [Faster-Whisper](https://github.com/SYSTRAN/faster-whisper),
+then turn the transcript into subtitles — with an optional LLM-assisted
+English translation step.
 
-Each run produces a self-contained output folder so nothing is ever overwritten.
+The project is notebook-based so you can run it either **locally** (with your
+own GPU/CPU) or **for free on Google Colab** — no coding required beyond
+editing a few configuration cells.
+
+## Features
+
+- Transcribe a local audio/video file *or* a YouTube URL (via `yt-dlp`)
+- Plain-text and timestamped (`[MM:SS-MM:SS]`) transcripts
+- Optional time-range transcription (e.g. only `8:00` → `25:00` of a file)
+- Generate an **SRT** subtitle file from a timestamped transcript
+- **Burn subtitles** directly into the video with `ffmpeg`
+- A ready-made LLM prompt (`prompt.txt`) for translating the Arabic
+  transcript into English while preserving the original timestamp
+  boundaries — paste it into ChatGPT/Claude/etc. together with your
+  transcript
+
+## Which notebook should I use?
+
+| Notebook | Where it runs | Best for |
+|---|---|---|
+| [`transcribe_notebook.ipynb`](transcribe_notebook.ipynb) | Your own machine (Jupyter) | Repeated use, local GPU, caches the Whisper model on disk so it never re-downloads |
+| [`colab.ipynb`](colab.ipynb) | [Google Colab](https://colab.research.google.com/) | No local setup, free GPU, one-off transcriptions |
+
+Both notebooks share the same core pipeline (Faster-Whisper → timestamped
+transcript → SRT → captioned video); the Colab version additionally handles
+file uploads/downloads in the browser instead of the local filesystem.
 
 ## Output structure
+
+Each run writes into an `outputs/<name>/` folder next to the notebook, so
+nothing is ever overwritten:
 
 ```
 outputs/
   some_video_title/
-    audio.mp3                        # downloaded / extracted audio
-    transcript_raw_ar.txt            # plain Arabic transcript
-    transcript_raw_ar_timestamps.txt # [MM:SS-MM:SS] or [H:MM:SS-H:MM:SS] markers
-  another_lecture/
-    audio.mp3
-    transcript_raw_ar.txt
-    transcript_raw_ar_timestamps.txt
+    <name>_transcript.txt              # plain Arabic transcript
+    <name>_transcript_timestamps.txt    # [MM:SS-MM:SS] timestamped transcript
+    <name>.srt                          # (optional) subtitle file
+    <name>_captioned.mp4                # (optional) video with burned-in captions
 ```
-
-> **Work in progress:** LLM-based Arabic cleanup, Arabic → English translation,
-> and English polishing are planned features. The transcription pipeline is
-> fully functional today.
 
 ---
 
-## 1. Prerequisites
+## 1. Local setup (`transcribe_notebook.ipynb`)
 
-### Python 3.11+
+### Prerequisites
+
+- Python 3.11+
+- [ffmpeg](https://ffmpeg.org/download.html) installed and on your `PATH`
+  (required for audio extraction and for burning subtitles into video)
+- An NVIDIA GPU with CUDA is optional but strongly recommended for larger
+  models; CPU also works, just slower
+
+### Install
 
 ```bash
 py -3.11 -m venv .venv
@@ -38,116 +69,83 @@ python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 ```
 
-### PyTorch with CUDA (NVIDIA GPU)
+If you have an NVIDIA GPU, install a CUDA build of PyTorch (adjust the index
+URL to match your CUDA version, e.g. `cu128`, `cu126`, `cu121`):
 
 ```bash
 pip install torch --index-url https://download.pytorch.org/whl/cu128
 ```
 
-Adjust the index URL to match your CUDA version (`cu128`, `cu126`, `cu121`).
-Run `python check_cuda.py` to verify your setup.
+### Run
 
-### ffmpeg (required)
-
-ffmpeg is used by both `yt-dlp` (audio extraction from YouTube) and this tool
-(audio extraction from local video files).
-
+```bash
+jupyter notebook transcribe_notebook.ipynb
 ```
-# Windows
-winget install ffmpeg
 
-# macOS
-brew install ffmpeg
+Run the cells top to bottom:
 
-# Debian / Ubuntu
-sudo apt install ffmpeg
-```
+1. **Verify dependencies** — checks Python packages, ffmpeg, and GPU availability
+2. **Configuration** — set model size, language, and optional time range
+3. **Model cache** — downloads the Whisper model once, reused on every later run
+4. **Input** — point at a local file *or* paste a YouTube URL (run one of the two cells)
+5. **Transcribe** — runs Faster-Whisper and prints timestamped segments live
+6. **Save transcripts** — writes the plain and timestamped `.txt` files
+7. *(optional)* **Generate SRT** — converts a timestamped transcript into `.srt`
+8. *(optional)* **Burn captions** — uses ffmpeg to produce a captioned `.mp4`
 
 ---
 
-## 2. Usage
+## 2. Google Colab (`colab.ipynb`)
 
-### Transcribe a YouTube video
-
-```bash
-python run.py "https://www.youtube.com/watch?v=xhGThib15IU"
-```
-
-### Transcribe a local video or audio file
-
-Any format ffmpeg understands is accepted: `.mp4`, `.mkv`, `.mov`, `.avi`,
-`.webm`, `.mp3`, `.wav`, `.flac`, `.m4a`, …
-
-```bash
-python run.py lecture.mp4
-python run.py recording.mp3
-```
-
-### Options
-
-| Flag | Description | Default |
-|------|-------------|---------|
-| `--model SIZE` | Faster-Whisper model: `tiny` `base` `small` `medium` `large-v2` | `large-v2` (set in `config.py`) |
-| `--device cuda\|cpu` | Inference device | `cuda` (set in `config.py`) |
-| `--language LANG` | Whisper language code. Pass `none` to auto-detect | `ar` |
-| `--start TIME` | Begin transcribing at this timestamp | start of file |
-| `--end TIME` | Stop at this timestamp | end of file |
-
-```bash
-# Use a smaller/faster model on CPU
-python run.py lecture.mp4 --model medium --device cpu
-
-# Auto-detect language (mixed Arabic/English video)
-python run.py lecture.mp4 --language none
-```
-
-### Transcribe part of a video (time range)
-
-Use `--start` and/or `--end` with the same time formats you would use in a player:
-
-| Form | Meaning | Example |
-|------|---------|---------|
-| `SS` | seconds only | `45` → 45 seconds |
-| `M:SS` / `MM:SS` | minutes and seconds | `8:00`, `0:35` |
-| `H:MM:SS` | hours, minutes, seconds | `1:25:00` |
-
-```bash
-# From 8:00 through 25:00 (timestamps in the transcript match the original video)
-python run.py lecture.mp4 --start 8:00 --end 25:00
-
-# First 90 seconds
-python run.py clip.mp4 --end 1:30
-
-# From 0:45 through the end of the file (output folder name includes the time range)
-python run.py clip.mp4 --start 0:45
-```
-
-The full audio file is still downloaded or extracted; only the chosen window is sent to Whisper. If `ffprobe` can read the duration, `--end` is clamped to the file length and the output folder name includes the range (e.g. `…_8m00s-25m00s`).
-
-### Transcribe only (skip download)
-
-If you already have an audio file and just want a transcript:
-
-```bash
-python transcribe.py lecture.mp3 --output-dir outputs/my_lecture
-python transcribe.py lecture.mp3 --output-dir outputs/snippet --start 2:00 --end 5:30
-```
+1. Open [`colab.ipynb`](colab.ipynb) in Google Colab (upload it or open it
+   directly from GitHub via `File → Open notebook → GitHub`)
+2. Go to `Runtime → Change runtime type` and select a **T4 GPU** for the best speed
+3. Run the cells top to bottom:
+   - Install dependencies
+   - Check GPU
+   - Configuration (model size, language, time range)
+   - Input — **either** upload a local file **or** paste a YouTube URL
+   - Transcribe
+   - Save & download the transcript
+   - *(optional)* Generate an SRT and burn it into the video
 
 ---
 
-## 3. Tuning quality and speed
+## 3. Translating the transcript with an LLM
 
-All defaults live in `config.py`:
+Once you have a timestamped transcript, copy the contents of
+[`prompt.txt`](prompt.txt) into your LLM chat of choice (ChatGPT, Claude,
+etc.) along with the transcript file. The prompt instructs the model to:
 
-| Setting | Default | Notes |
-|---------|---------|-------|
-| `FW_MODEL_SIZE` | `"large-v2"` | Best quality for Arabic. Use `"medium"` for faster runs. |
-| `FW_DEVICE` | `"cuda"` | Switch to `"cpu"` if no GPU is available. |
+- Translate Arabic → English while preserving meaning and wording
+- Keep the exact same `[MM:SS-MM:SS]` timestamp boundaries (so the output can
+  be fed straight into the SRT generator cell)
+- Avoid adding commentary, notes, or explanations
+
+For long videos, split the transcript into ~20-minute chunks and translate
+each one as a continuation of the previous part (the prompt already includes
+guidance for this).
 
 ---
 
-## 4. Checking your GPU
+## 4. Tuning quality and speed
 
-```bash
-python check_cuda.py
-```
+Set in the **Configuration** cell of either notebook:
+
+| Setting | Options | Notes |
+|---|---|---|
+| `MODEL_SIZE` | `tiny` `base` `small` `medium` `large-v2` `large-v3` `large-v3-turbo` | Larger = more accurate, slower. `large-v3-turbo` is close to `large-v3` quality at a fraction of the time |
+| `LANGUAGE` | `"ar"`, `"en"`, `"fr"`, … or `None` | `None` auto-detects from the first 30 seconds |
+| `START_TIME` / `END_TIME` | `"8:00"`, `"1:25:00"`, `None` | Transcribe only part of a file; timestamps in the output still match the original |
+
+---
+
+## Contributing
+
+Issues and pull requests are welcome. If you add a feature to one notebook,
+please consider porting it to the other so the local and Colab versions stay
+in sync.
+
+## License
+
+Released under the [MIT License](LICENSE).

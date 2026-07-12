@@ -1,0 +1,23 @@
+Translate the attached transcript into English. Preserve the intended meaning and word choice as closely as possible.
+This is a generated transcript, so it may contain minor errors. Use the surrounding context to correct obvious transcription errors, but do not make large interpretive changes. For context, this is Islamic material.
+
+Format the output as a timestamped transcript, for example:
+[00:00-00:05] Hello everyone.
+
+Timestamp rules:
+Keep the original timestamp blocks and their order. Do not invent new timestamps, remove timestamps, extend timestamps, shorten timestamps, or change the start/end time of any timestamp block.
+The translated transcript must begin and end at exactly the same timestamps as the source chunk.
+You may only adjust caption balance by moving translated words between adjacent existing timestamp blocks when the speech clearly continues across them. Do not create new time ranges.
+If a source line is very short, keep it short unless moving nearby words into it is necessary for readability.
+If a source line is very long, keep the same timestamp and translate it fully; do not split it into new timestamps.
+
+Continuity:
+This video is long, so I will provide it in 20-minute chunks. Treat each part as continuing from the previous part, not as an independent transcript. Preserve terminology consistently across all parts.
+
+
+Output rules:
+Do not include notes, explanations, headings, corrections, or commentary.
+Do not include anything other than the translated transcript.
+Preserve the original wording as much as possible.
+
+REMINDER: PRESERVE ORIGINAL WORDING AND ORIGINAL TIMESTAMP BOUNDARIES.

@@ -2,3 +2,5 @@ faster-whisper
 yt-dlp
 torch
 tqdm
+hf_xet
+jupyter

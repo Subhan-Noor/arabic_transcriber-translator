@@ -24,3 +24,27 @@ Thumbs.db
 # Per-run transcription outputs
 outputs/
 
+# Jupyter
+.ipynb_checkpoints/
+
+# Model caches (Faster-Whisper / Hugging Face downloads)
+.cache/
+models/
+
+# Media inputs/outputs — never commit audio/video to the repo
+*.mp3
+*.mp4
+*.mkv
+*.mov
+*.webm
+*.avi
+*.m4v
+*.wav
+*.flac
+*.m4a
+*.srt
+
+# YouTube downloads / cookies
+cookies.txt
+*.part
+*.ytdl
