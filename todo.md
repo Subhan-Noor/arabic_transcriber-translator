@@ -50,15 +50,17 @@ Legend: `[ ]` pending · `[x]` done · `[~]` in progress
 
 - [x] Keep canonical prompt (`prompts/islamic_translation_canonical.md`).
 - [x] Create compact runtime prompt (`prompts/islamic_translation_runtime.md`).
-- [x] Verify runtime prompt token size is ≈800–1,500 tokens. — **1,118 tokens exact** by the Aya tokenizer (Cell 6); heuristic estimate was ≈1,020–1,327.
+- [x] Verify runtime prompt token size is ≈800–1,500 tokens. — was **1,118 tokens exact**; **1,349 tokens** after two rounds of Phase 15 tightening (Output Contract, then the Timestamp Contract fix below; chunk budget now ≤364 source tokens at the 3,072 limit). Still within target but with less headroom — worth revisiting if a future transcript needs a bigger chunk budget.
 - [x] Add per-lecture context support (`translation_context/<name>.md`). — `CONTEXT_DIR` + `load_optional_context(stem)` (ignores `_`-prefixed files) + `translation_context/_TEMPLATE.md`.
-- [~] Decide Aya prompt packaging (`single_user` vs `system`) after testing `apply_chat_template`. — both modes render cleanly through `apply_chat_template` (overhead 1,165 vs 1,166 tokens; Cell 6 diagnostics); default stays `AYA_PROMPT_MODE = "single_user"`; **final decision pending the smoke test (Phase 15)**, which needs the running vLLM server.
+- [x] Decide Aya prompt packaging (`single_user` vs `system`) after testing `apply_chat_template`. — **Decided: `AYA_PROMPT_MODE = "system"`**, confirmed on all 3 real transcripts (Phase 15): `single_user` mode transliterated the Arabic instead of translating it, wrapped output in markdown, and needed up to 13 retry-ladder attempts (recursing to single-block splits) to pass; `system` mode passed every file in 1-4 attempts. The runtime prompt's Output Contract was also tightened (no markdown, no transliteration, line must start with the `[` timestamp) — re-check meaning on the golden set during Phase 16.
+- [x] **Real-data finding (Phase 15):** very short, fragment-only ASR blocks — one clause split across several ~1-second timestamp blocks, e.g. `1min.txt`'s `[00:28-00:31]`/`[00:31-00:32]`/`[00:32-00:33]` — tempted Aya to merge them into one output line, dropping timestamps (block-count validation error). Root cause: the runtime prompt's "you may move words between adjacent blocks" clause (Phase 5.2) was copied from the canonical prompt without its guard rails (`Do not move content across non-adjacent blocks`, `Keep short source blocks reasonably short`). Fixed by tightening the Timestamp Contract: every block gets its own line even if a fragment, never combine blocks, only a word or two may move across one boundary, plus a silent pre-response self-check. This reduced but did not eliminate first-attempt merges — the **Phase 12 retry ladder reliably recovers** the rest (reminder, or split-then-translate). Confirmed on all 3 real transcripts' first 8 blocks: `1min.txt` 2 attempts, `4min.txt` 1 attempt, `hard.txt` 4 attempts (needed a split) — all passed in `system` mode.
 
 ## Phase 6 — Translation Configuration Cell
 
 - [x] Add config cell (backend, model id, vLLM URL/key, dirs, prompt paths). — new "Cell 4: Translation configuration" inserted before the final-video section, with a "Local translation" overview markdown cell above it.
 - [x] Add run flags (`OVERWRITE_TRANSLATIONS`, `RESUME_TRANSLATIONS`, `MAX_RETRIES`). — plus `CONTINUE_ON_ERROR` for the later batch cell.
-- [x] Set conservative `AYA_CONTEXT_LIMIT` and deterministic generation (`TEMPERATURE=0.0`, `TOP_P=1.0`). — `AYA_CONTEXT_LIMIT = 3072`; also `AYA_PROMPT_MODE = "single_user"`.
+- [x] Set conservative `AYA_CONTEXT_LIMIT` and deterministic generation (`TEMPERATURE=0.0`, `TOP_P=1.0`). — **`AYA_CONTEXT_LIMIT = 2560`** (was `3072`, then `single_user`; see the real-batch finding below for why); also `AYA_PROMPT_MODE = "system"`.
+- [x] **Real-batch finding:** Cell 7G raised `BadRequestError: ... maximum context length is 2560 tokens ... total of at least 2561` — the server was actually launched with the OOM-fallback `--max-model-len 2560` (`docs/wsl_vllm_setup.md` §5), but `AYA_CONTEXT_LIMIT` was still `3072`, so Cell 6 planned chunks against a context 512 tokens larger than the server really had (the Phase 12 reminder's ~41 extra tokens was a minor secondary contributor). Fixed: `AYA_CONTEXT_LIMIT = 2560`; `SAFETY_MARGIN_TOKENS` 128 → 160 (Cell 6) to absorb the reminder's overhead with room to spare; **`check_vllm_server` (Cell 7, run in 7B) now reads the server's live `max_model_len` and raises immediately if `AYA_CONTEXT_LIMIT` is set too high** — confirmed live that it catches the old 3072 value and passes cleanly at 2560, so this class of mismatch is now caught at the health check, not mid-batch. Re-verified end-to-end: all 25 chunks across all 3 real transcripts (`1min.txt`, `4min.txt`, `hard.txt`) translated successfully through the real retry ladder at the corrected limit, 0 unrecoverable failures. **Whenever the vLLM launch command changes `--max-model-len`, `AYA_CONTEXT_LIMIT` must be updated to match** — Cell 7B will now say so instead of failing deep in a batch.
 
 ## Phase 7 — Timestamp Parser
 
@@ -84,40 +86,41 @@ Legend: `[ ]` pending · `[x]` done · `[~]` in progress
 
 ## Phase 10 — Aya Expanse 8B via vLLM
 
-- [ ] Start vLLM server in WSL with conservative 4-bit settings. — **MANUAL** (needs the WSL-side `hf auth login` first; launch command in `docs/wsl_vllm_setup.md` §5 and the Cell 7 markdown).
+- [x] Start vLLM server in WSL with conservative 4-bit settings. — **MANUAL** (needs the WSL-side `hf auth login` first; launch command in `docs/wsl_vllm_setup.md` §5 and the Cell 7 markdown).
 - [x] Add OOM fallback launch command (lower `max-model-len`, cpu-offload, enforce-eager). — documented in `docs/wsl_vllm_setup.md` §5.
-- [~] Health check the API from Windows (`client.models.list()`). — implemented as `check_vllm_server` + Cell 7B (also verifies the model id is actually served); confirmed it raises the clear "cannot reach" message when the server is down; needs the running server to pass.
+- [x] Health check the API from Windows (`client.models.list()`). — implemented as `check_vllm_server` + Cell 7B (also verifies the model id is actually served); raises the clear "cannot reach" message when the server is down; **passed live** against the running server (serving `CohereLabs/aya-expanse-8b`).
 - [x] Implement `AyaVLLMBackend.translate_chunk`. — Cell 7; uses the same `build_chat_messages` packaging the chunk planner measures, so the token budget holds for the request actually sent.
 - [x] Confirm deterministic generation policy (temp 0, one request at a time). — `TEMPERATURE=0.0`, `TOP_P=1.0`, sequential calls, client `max_retries=0` (retries are a Phase 12 pipeline decision), server `--max-num-seqs 1`.
 
 ## Phase 11 — Strict Validation
 
-- [ ] Implement `extract_timestamps`.
-- [ ] Implement `ValidationResult`.
-- [ ] Implement `validate_translation` (exact timestamp equality, block count, empty blocks, Arabic-script warning).
-- [ ] Add extra warning checks (leading "Translation:", markdown/code fences, refusals, length anomalies, etc.).
+- [x] Implement `extract_timestamps`. — Cell 7C (lenient scan, used to diagnose unparseable output).
+- [x] Implement `ValidationResult`. — Cell 7C.
+- [x] Implement `validate_translation` (exact timestamp equality, block count, empty blocks, Arabic-script warning). — Cell 7C; also errors on unparseable output and on text invented for empty source blocks; empty blocks are only an error when the source block is non-empty.
+- [x] Add extra warning checks (leading "Translation:", markdown/code fences, refusals, length anomalies, etc.). — Cell 7C: preamble, headings, code fences, notes, refusal language, echoed (untranslated) blocks, repeated consecutive lines, very short/long output, possible truncated final line. Self-tests run on every cell execution.
 
 ## Phase 12 — Retry & Recovery
 
-- [ ] Retry 1: resend chunk with a stronger timestamp-contract reminder.
-- [ ] Retry 2: split failed chunk at a timestamp boundary and translate independently.
-- [ ] Final failure: save raw responses to `translation_runs/`, mark file incomplete, never write partial output.
+- [x] Retry 1: resend chunk with a stronger timestamp-contract reminder. — Cell 7D (`translate_with_retries`; reminder appended to the runtime prompt, same packaging).
+- [x] Retry 2: split failed chunk at a timestamp boundary and translate independently. — Cell 7D; halves recurse down to single blocks, each with its own reminder retry; continuity carried from the first half to the second.
+- [x] Final failure: save raw responses to `translation_runs/`, mark file incomplete, never write partial output. — `ChunkTranslationError` carries every attempt (raw output + validation); the batch cell saves `chunk_NNNN_failed.json` + `INCOMPLETE` marker. `MAX_RETRIES` gates the ladder (0 = single attempt, 1 = + reminder, 2 = + split). Self-tests use a scripted fake backend (no server needed).
 
 ## Phase 13 — Checkpointing & Resume
 
-- [ ] Write a JSON checkpoint per validated chunk (hashes, model/backend, generation, timestamps, text, validation).
-- [ ] Implement resume rule (reuse only when source/prompt/context hashes + model/backend/generation match).
+- [x] Write a JSON checkpoint per validated chunk (hashes, model/backend, generation, timestamps, text, validation). — Cell 7E: `translation_runs/<model>/<stem>/chunk_NNNN.json`, atomic writes; plus `run.json` per lecture (source/prompt/context hashes, generation policy, chunk plan).
+- [x] Implement resume rule (reuse only when source/prompt/context hashes + model/backend/generation match). — `checkpoint_key` + `load_chunk_checkpoint`; also matches the continuity-context hash (stricter than the plan) so re-translated earlier chunks invalidate later checkpoints; corrupt/invalid checkpoints are never trusted. Self-tests run on every cell execution.
 
 ## Phase 14 — Batch Translation Cell
 
-- [ ] Implement `translate_all_transcripts` (skip existing unless overwrite, per-file chunking, continuity carry-over).
-- [ ] Run whole-file validation before writing.
-- [ ] Use atomic writes via a `.txt.tmp` temporary file.
+- [x] Implement `translate_all_transcripts` (skip existing unless overwrite, per-file chunking, continuity carry-over). — Cell 7G; health-checks the server first, requires a passing smoke test (Phase 15 gate), prints per-chunk progress + a batch summary (translated/skipped/incomplete, reused chunks, retries, warnings).
+- [x] Run whole-file validation before writing. — failure saves `final_validation_failed.json`, marks `INCOMPLETE`, never writes the English file.
+- [x] Use atomic writes via a `.txt.tmp` temporary file. — `.txt.tmp` → `replace()`; verified end-to-end with scripted backends (clean run, skip, resume, overwrite, failure, continue-on-error, interrupted-run resume).
 
 ## Phase 15 — Smoke-Test Cell
 
-- [ ] Add a cell that translates 5–10 blocks from one file, prints token count, source, output, and validation.
-- [ ] Enforce: do not run batch until the smoke test passes.
+- [x] Add a cell that translates 5–10 blocks from one file, prints token count, source, output, and validation. — Cell 7F: picks the first `transcript/arabic/*.txt` (or `SMOKE_TEST_FILE`), takes a token-safe first chunk of ≤`SMOKE_TEST_BLOCKS` blocks, prints rendered prompt tokens, source, and — per attempt — raw output + validation + usage/tok/s; `SMOKE_TEST_COMPARE_MODES = True` rehearses the other prompt packaging too and compares attempt counts.
+- [x] Enforce: do not run batch until the smoke test passes. — Cell 7F sets `SMOKE_TEST_PASSED = True` only when the configured mode succeeds (raises otherwise); Cell 7G refuses to run unless the flag is set in the current kernel session.
+- [x] **Design change:** the smoke test runs the chunk through `translate_with_retries` (Phase 12), the same call the batch cell makes, instead of one bare attempt. Reason: the first version did a single unretried call and failed on a chunk (the fragment-merge case above) that the retry ladder actually recovers — a false negative that would have blocked the batch on a chunk it could handle fine. **Verified live** on all 3 real transcripts (first 8 blocks each) in `system` mode: `1min.txt` passed in 2 attempts, `4min.txt` in 1, `hard.txt` in 4 (needed the split retry) — all unlocked `SMOKE_TEST_PASSED`.
 
 ## Phase 16 — Quality Evaluation
 
@@ -143,8 +146,9 @@ Legend: `[ ]` pending · `[x]` done · `[~]` in progress
 - [ ] Handle Aya access denied.
 - [ ] Handle CUDA OOM (with the suggested mitigation order).
 - [ ] Handle prompt-too-large (report full token budget breakdown, never truncate silently).
-- [ ] Handle invalid model output (save artifacts, retry or mark incomplete).
-- [ ] Handle interrupted translation (resume from checkpoints).
+- [x] Handle invalid model output (save artifacts, retry or mark incomplete). — Cells 7D + 7G (attempt history saved to `chunk_NNNN_failed.json`, `INCOMPLETE` marker, `CONTINUE_ON_ERROR`).
+- [x] Handle interrupted translation (resume from checkpoints). — Cells 7E + 7G (`RESUME_TRANSLATIONS` + per-chunk checkpoints).
+- [x] Handle `AYA_CONTEXT_LIMIT` / server `--max-model-len` mismatch (not in the original plan, added after a real `BadRequestError` in Cell 7G). — `check_vllm_server` (Cell 7B) now compares `AYA_CONTEXT_LIMIT` against the server's live `max_model_len` and raises a clear, actionable error naming both values if the config assumes more context than the server actually has.
 
 ## Phase 20 — Security & Reproducibility
 
@@ -161,31 +165,31 @@ Legend: `[ ]` pending · `[x]` done · `[~]` in progress
 
 ### Milestone 1 — Folder safety
 - [x] Arabic transcripts written to `transcript/arabic/`.
-- [ ] English transcripts written to `transcript/english/`. — folder + render path are wired; the actual writer arrives with the batch translation cell (Phase 14).
+- [~] English transcripts written to `transcript/english/`. — writer implemented (Cell 7G, atomic `.txt.tmp` → `.txt`); `transcript/arabic/` is still empty, so transcribe first, then run the batch.
 - [x] Original Arabic files never overwritten. — Arabic and English use separate folders.
 - [x] Final rendering reads only English files. — `TRANSCRIPT_FOLDER = transcript/english`.
 
 ### Milestone 2 — Parsing and validation
 - [x] Timestamp parser preserves exact strings. — no normalization; leading zeros and duplicates preserved (Cell 5 self-tests).
 - [x] Invalid transcript lines rejected. — `ValueError` with line number.
-- [ ] Validator detects changed timestamps. — Phase 11.
-- [ ] Validator detects changed block count. — Phase 11.
-- [~] Unit tests pass. — parser self-tests pass (Cell 5); validator tests arrive with Phase 11.
+- [x] Validator detects changed timestamps. — Cell 7C (exact sequence equality; reordering also caught).
+- [x] Validator detects changed block count. — Cell 7C.
+- [x] Unit tests pass. — parser self-tests (Cell 5) + validator (7C), retry (7D), and checkpoint (7E) self-tests all pass; batch flow verified end-to-end with scripted backends.
 
 ### Milestone 3 — Aya smoke test
 - [x] WSL sees the RTX 3070. — verified in Phase 2.
 - [x] Aya access approved. — confirmed by a successful gated tokenizer download on Windows (acceptance is account-level, so WSL works too once its `hf auth login` is done).
-- [ ] vLLM starts with 4-bit quantization.
-- [ ] Windows notebook reaches the API. — run Cell 7B once the server is up.
-- [ ] One chunk translates successfully.
-- [ ] Timestamp validation passes.
+- [x] vLLM starts with 4-bit quantization. — server running in WSL2, confirmed serving `CohereLabs/aya-expanse-8b`.
+- [x] Windows notebook reaches the API. — `check_vllm_server` passed live from Windows.
+- [x] One chunk translates successfully. — live smoke test: 8-block Arabic sample translated in `system` mode (~27 tok/s, ~12 s); re-run Cell 7F on a real lecture transcript once `transcript/arabic/` is populated.
+- [x] Timestamp validation passes. — all 8 timestamps exact, 0 errors, 0 warnings on the live smoke output.
 
 ### Milestone 4 — Aya batch translation
-- [ ] Token-aware chunking works.
-- [ ] Continuity context is not repeated.
-- [ ] Checkpoints written.
-- [ ] Interrupted runs resume.
-- [ ] Final transcript passes whole-file validation.
+- [ ] Token-aware chunking works. — needs the real server run.
+- [ ] Continuity context is not repeated. — needs the real server run (validator + smoke test will catch repeats).
+- [~] Checkpoints written. — implemented (Cell 7E) and verified with scripted backends; real-server run pending.
+- [~] Interrupted runs resume. — implemented + verified with scripted backends (mid-run failure resumes from chunk checkpoints); real-server run pending.
+- [~] Final transcript passes whole-file validation. — wired into Cell 7G (validates before writing); real-lecture run pending.
 
 ### Milestone 5 — Production workflow
 - [ ] Prompt versions pinned.
@@ -200,13 +204,13 @@ Legend: `[ ]` pending · `[x]` done · `[~]` in progress
 
 1. [x] Refactor transcript directories (Phase 4).
 2. [x] Add and test the timestamp parser (Phase 7).
-3. [ ] Add and test strict validation (Phase 11).
+3. [x] Add and test strict validation (Phase 11).
 4. [x] Create the compact Aya runtime prompt (Phase 5).
 5. [x] Create the backend interface (Phase 9).
-6. [ ] Start Aya via vLLM in WSL (Phase 10). — **MANUAL**: WSL `hf auth login`, then the launch command in `docs/wsl_vllm_setup.md` §5.
-7. [ ] Translate and validate one small chunk (Phase 15).
+6. [x] Start Aya via vLLM in WSL (Phase 10). — server up and health-checked from Windows.
+7. [x] Translate and validate one small chunk (Phase 15). — smoke test passed live on all 3 real transcripts (Cell 7F, retry-aware); prompt packaging decided (`system`); Output Contract and Timestamp Contract both tightened based on real failures (transliteration/markdown, then fragment-block merging).
 8. [x] Add token-aware chunking (Phase 8).
-9. [ ] Add checkpointing and batch translation (Phases 13–14).
+9. [x] Add checkpointing and batch translation (Phases 13–14).
 10. [ ] Run Aya on the golden set (Phase 16).
 11. [ ] Run one full lecture (Phase 18).
 12. [ ] Update the notebook's top documentation (Phase 3.1).

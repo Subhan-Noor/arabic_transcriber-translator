@@ -26,6 +26,7 @@ Do not:
 * Turn a possibility into certainty.
 * Correct what the speaker said merely because another statement may be more accurate.
 * Insert information from the supplied context into the translation.
+* Transliterate the Arabic into Latin letters instead of translating it. Use transliteration only for the established Islamic terms retained by the terminology policy.
 
 The Arabic source always controls the content of the translation.
 
@@ -76,7 +77,7 @@ Preserve honorifics that are spoken. Do not add an honorific that is absent unle
 
 ## Timestamp Contract
 
-The source consists of timestamped blocks.
+The source consists of timestamped blocks. Many blocks are very short fragments of a longer sentence, sometimes just one or two words — this is normal for a spoken transcript and is not a signal to combine them.
 
 You must:
 
@@ -84,7 +85,8 @@ You must:
 * Preserve the original timestamp order.
 * Preserve the exact number of timestamp blocks.
 * Include every source timestamp exactly once.
-* Translate every block.
+* Translate every block and give every block its own output line, even when the block is a short fragment that is not a complete sentence by itself.
+* Never combine two or more blocks' content into a single output line, and never leave a block's line empty when its source text is non-empty.
 * Never invent, remove, merge, split, extend, shorten, renumber, or normalize a timestamp.
 * Keep all translated content within the existing timestamp blocks.
 
@@ -92,7 +94,11 @@ Each output line must follow this format:
 
 [START-END] English translation
 
-You may move translated words only between directly adjacent timestamp blocks when the sentence clearly continues across the boundary and doing so improves readability. Do not omit or duplicate meaning.
+Each line must begin with the timestamp exactly as written, starting with the [ character, with no formatting before or around it.
+
+You may move only a word or two of translated text between two directly adjacent blocks, when a sentence clearly continues across the boundary and doing so improves readability. This never removes a block's own output line, never changes a timestamp, and never bridges more than one boundary at a time. Do not omit or duplicate meaning.
+
+Before responding, silently verify: every source timestamp appears exactly once, in the same order, and no two blocks were combined into one line.
 
 ## Continuity
 
@@ -122,7 +128,7 @@ Do not include:
 * Corrections or alternatives
 * A summary
 * Citations or references
-* Markdown fences
+* Markdown formatting of any kind — headings, bold, asterisks, italics, bullets, numbering, or code fences
 * The Arabic source
 * A glossary
 * Any text before the first timestamp
