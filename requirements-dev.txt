@@ -1,0 +1,4 @@
+# Optional, for developing/testing the parser, chunker, and validator locally.
+pytest
+pandas
+psutil

@@ -1,0 +1,12 @@
+# Installed inside WSL2 (Ubuntu), NOT in the Windows `transcribe` conda env.
+# vLLM does not run natively on Windows — see local_translation_notebook_development_plan.md, Phase 2.
+#
+#   curl -LsSf https://astral.sh/uv/install.sh | sh
+#   source ~/.local/bin/env
+#   mkdir -p ~/local-translation-vllm && cd ~/local-translation-vllm
+#   uv venv --python 3.12 .venv
+#   source .venv/bin/activate
+#   uv pip install -r requirements-vllm.txt
+
+vllm
+bitsandbytes>=0.49.2

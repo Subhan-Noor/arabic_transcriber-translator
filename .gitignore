@@ -21,8 +21,12 @@ env/
 .DS_Store
 Thumbs.db
 
-# Per-run transcription outputs
+# Per-run transcription/translation outputs
 outputs/
+input/
+transcript/
+output/
+translation_runs/
 
 # Jupyter
 .ipynb_checkpoints/
@@ -30,6 +34,9 @@ outputs/
 # Model caches (Faster-Whisper / Hugging Face downloads)
 .cache/
 models/
+
+# Secrets / local env
+.env
 
 # Media inputs/outputs — never commit audio/video to the repo
 *.mp3

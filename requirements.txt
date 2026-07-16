@@ -4,3 +4,12 @@ torch
 tqdm
 hf_xet
 jupyter
+
+# Local translation stage (Aya Expanse 8B via a local vLLM server in WSL2)
+transformers
+huggingface_hub
+safetensors
+sentencepiece
+openai
+httpx
+pydantic
