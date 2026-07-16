@@ -50,9 +50,9 @@ Legend: `[ ]` pending · `[x]` done · `[~]` in progress
 
 - [x] Keep canonical prompt (`prompts/islamic_translation_canonical.md`).
 - [x] Create compact runtime prompt (`prompts/islamic_translation_runtime.md`).
-- [x] Verify runtime prompt token size is ≈800–1,500 tokens. — ≈1,020–1,327 tokens by heuristic (5,307 chars / 767 words); the config cell prints this and the exact Aya-tokenizer count is confirmed in Phase 8.
+- [x] Verify runtime prompt token size is ≈800–1,500 tokens. — **1,118 tokens exact** by the Aya tokenizer (Cell 6); heuristic estimate was ≈1,020–1,327.
 - [x] Add per-lecture context support (`translation_context/<name>.md`). — `CONTEXT_DIR` + `load_optional_context(stem)` (ignores `_`-prefixed files) + `translation_context/_TEMPLATE.md`.
-- [~] Decide Aya prompt packaging (`single_user` vs `system`) after testing `apply_chat_template`. — default set to `AYA_PROMPT_MODE = "single_user"`; **final decision pending the smoke test (Phase 15)**, which needs the running vLLM server.
+- [~] Decide Aya prompt packaging (`single_user` vs `system`) after testing `apply_chat_template`. — both modes render cleanly through `apply_chat_template` (overhead 1,165 vs 1,166 tokens; Cell 6 diagnostics); default stays `AYA_PROMPT_MODE = "single_user"`; **final decision pending the smoke test (Phase 15)**, which needs the running vLLM server.
 
 ## Phase 6 — Translation Configuration Cell
 
@@ -62,33 +62,33 @@ Legend: `[ ]` pending · `[x]` done · `[~]` in progress
 
 ## Phase 7 — Timestamp Parser
 
-- [ ] Implement `TimestampBlock` dataclass.
-- [ ] Implement `parse_timestamped_transcript` (exact timestamp preservation, reject malformed lines).
-- [ ] Implement `blocks_to_text`.
-- [ ] Add parser tests (standard, hour, Arabic punctuation, empty text, blank lines, malformed, duplicate, leading zeros).
+- [x] Implement `TimestampBlock` dataclass. — Cell 5 (frozen dataclass; exact timestamp string + text + source line number).
+- [x] Implement `parse_timestamped_transcript` (exact timestamp preservation, reject malformed lines). — Cell 5; malformed lines raise `ValueError` with the line number; empty transcripts rejected.
+- [x] Implement `blocks_to_text`. — Cell 5; round-trip (parse → rebuild) is lossless.
+- [x] Add parser tests (standard, hour, Arabic punctuation, empty text, blank lines, malformed, duplicate, leading zeros). — inline self-tests run on every Cell 5 execution; all pass.
 
 ## Phase 8 — Token-Aware Chunking
 
-- [ ] Load the Aya tokenizer for planning only.
-- [ ] Implement `count_tokens` and `apply_chat_template` prompt measurement.
-- [ ] Implement `estimate_output_tokens`.
-- [ ] Implement chunk-budget math with safety margin (fail if budget ≤ 0).
-- [ ] Implement greedy block chunking (never split a block initially).
-- [ ] Implement small continuity-context builder (≤200–400 tokens, marked "do not output").
+- [x] Load the Aya tokenizer for planning only. — Cell 6; loads on Windows (gated download worked → license acceptance + `hf auth login` confirmed); clear "Aya is gated" error if it can't.
+- [x] Implement `count_tokens` and `apply_chat_template` prompt measurement. — `count_tokens` + `measure_prompt_tokens` (fully rendered chat prompt); runtime prompt = 1,118 tokens exact.
+- [x] Implement `estimate_output_tokens`. — `min(1400, max(256, 1.8·src + 128))`.
+- [x] Implement chunk-budget math with safety margin (fail if budget ≤ 0). — `plan_source_budget` (binary search, since the output reserve grows with source size); raises `PromptTooLargeError` with the full token breakdown. At the 3,072 limit: ≤447 source tokens/chunk.
+- [x] Implement greedy block chunking (never split a block initially). — `build_chunks`; an oversized single block is refused loudly, never split.
+- [x] Implement small continuity-context builder (≤200–400 tokens, marked "do not output"). — `build_continuity_context`; strips timestamps, shrinks (then returns "") rather than exceed 400 tokens.
 
 ## Phase 9 — Shared Backend Interface
 
-- [ ] Implement `TranslationResult` dataclass.
-- [ ] Define `TranslationBackend` protocol.
-- [ ] Keep the batch pipeline backend-agnostic (call only `translate_chunk`).
+- [x] Implement `TranslationResult` dataclass. — Cell 7 (adds a truncation warning when `finish_reason == "length"`).
+- [x] Define `TranslationBackend` protocol. — Cell 7.
+- [x] Keep the batch pipeline backend-agnostic (call only `translate_chunk`). — interface in place; the Phase 14 batch cell must only call `translate_chunk()`.
 
 ## Phase 10 — Aya Expanse 8B via vLLM
 
-- [ ] Start vLLM server in WSL with conservative 4-bit settings.
-- [ ] Add OOM fallback launch command (lower `max-model-len`, cpu-offload, enforce-eager).
-- [ ] Health check the API from Windows (`client.models.list()`).
-- [ ] Implement `AyaVLLMBackend.translate_chunk`.
-- [ ] Confirm deterministic generation policy (temp 0, one request at a time).
+- [ ] Start vLLM server in WSL with conservative 4-bit settings. — **MANUAL** (needs the WSL-side `hf auth login` first; launch command in `docs/wsl_vllm_setup.md` §5 and the Cell 7 markdown).
+- [x] Add OOM fallback launch command (lower `max-model-len`, cpu-offload, enforce-eager). — documented in `docs/wsl_vllm_setup.md` §5.
+- [~] Health check the API from Windows (`client.models.list()`). — implemented as `check_vllm_server` + Cell 7B (also verifies the model id is actually served); confirmed it raises the clear "cannot reach" message when the server is down; needs the running server to pass.
+- [x] Implement `AyaVLLMBackend.translate_chunk`. — Cell 7; uses the same `build_chat_messages` packaging the chunk planner measures, so the token budget holds for the request actually sent.
+- [x] Confirm deterministic generation policy (temp 0, one request at a time). — `TEMPERATURE=0.0`, `TOP_P=1.0`, sequential calls, client `max_retries=0` (retries are a Phase 12 pipeline decision), server `--max-num-seqs 1`.
 
 ## Phase 11 — Strict Validation
 
@@ -166,17 +166,17 @@ Legend: `[ ]` pending · `[x]` done · `[~]` in progress
 - [x] Final rendering reads only English files. — `TRANSCRIPT_FOLDER = transcript/english`.
 
 ### Milestone 2 — Parsing and validation
-- [ ] Timestamp parser preserves exact strings.
-- [ ] Invalid transcript lines rejected.
-- [ ] Validator detects changed timestamps.
-- [ ] Validator detects changed block count.
-- [ ] Unit tests pass.
+- [x] Timestamp parser preserves exact strings. — no normalization; leading zeros and duplicates preserved (Cell 5 self-tests).
+- [x] Invalid transcript lines rejected. — `ValueError` with line number.
+- [ ] Validator detects changed timestamps. — Phase 11.
+- [ ] Validator detects changed block count. — Phase 11.
+- [~] Unit tests pass. — parser self-tests pass (Cell 5); validator tests arrive with Phase 11.
 
 ### Milestone 3 — Aya smoke test
-- [ ] WSL sees the RTX 3070.
-- [ ] Aya access approved.
+- [x] WSL sees the RTX 3070. — verified in Phase 2.
+- [x] Aya access approved. — confirmed by a successful gated tokenizer download on Windows (acceptance is account-level, so WSL works too once its `hf auth login` is done).
 - [ ] vLLM starts with 4-bit quantization.
-- [ ] Windows notebook reaches the API.
+- [ ] Windows notebook reaches the API. — run Cell 7B once the server is up.
 - [ ] One chunk translates successfully.
 - [ ] Timestamp validation passes.
 
@@ -199,13 +199,13 @@ Legend: `[ ]` pending · `[x]` done · `[~]` in progress
 ## Recommended Implementation Order
 
 1. [x] Refactor transcript directories (Phase 4).
-2. [ ] Add and test the timestamp parser (Phase 7).
+2. [x] Add and test the timestamp parser (Phase 7).
 3. [ ] Add and test strict validation (Phase 11).
 4. [x] Create the compact Aya runtime prompt (Phase 5).
-5. [ ] Create the backend interface (Phase 9).
-6. [ ] Start Aya via vLLM in WSL (Phase 10).
+5. [x] Create the backend interface (Phase 9).
+6. [ ] Start Aya via vLLM in WSL (Phase 10). — **MANUAL**: WSL `hf auth login`, then the launch command in `docs/wsl_vllm_setup.md` §5.
 7. [ ] Translate and validate one small chunk (Phase 15).
-8. [ ] Add token-aware chunking (Phase 8).
+8. [x] Add token-aware chunking (Phase 8).
 9. [ ] Add checkpointing and batch translation (Phases 13–14).
 10. [ ] Run Aya on the golden set (Phase 16).
 11. [ ] Run one full lecture (Phase 18).
