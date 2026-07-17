@@ -21,8 +21,13 @@ env/
 .DS_Store
 Thumbs.db
 
-# Per-run transcription outputs
+# Per-run media / transcripts / assets — never commit these folders
+input/
+output/
 outputs/
+assets/
+transcript/
+transcripts/
 
 # Jupyter
 .ipynb_checkpoints/
