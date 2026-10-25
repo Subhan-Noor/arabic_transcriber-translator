@@ -1,0 +1,2 @@
+# Optional audio cleanup; install after configuring your PyTorch environment.
+deepfilternet==0.5.6

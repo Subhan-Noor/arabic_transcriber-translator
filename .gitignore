@@ -1,0 +1,85 @@
+# Python artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+build/
+dist/
+*.egg-info/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Editor / IDE
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Per-run media / transcripts / assets — never commit these folders
+input/
+output/
+outputs/
+assets/
+transcript/
+transcripts/
+approved_translations/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Model caches (Faster-Whisper / Hugging Face downloads)
+.cache/
+models/
+
+# Media inputs/outputs — never commit audio/video to the repo
+*.mp3
+*.mp4
+*.mkv
+*.mov
+*.webm
+*.avi
+*.m4v
+*.wav
+*.flac
+*.m4a
+*.srt
+
+# YouTube downloads / cookies
+cookies.txt
+*.part
+*.ytdl
+client_secret.json
+
+# Credentials and local settings
+.env
+.env.*
+!.env.example
+*cookies*.txt
+*.pem
+*.key
+
+# Backups, diagnostics and temporary rendering files
+*.bak
+*.tmp
+confidence_dump.tsv
+*.clips.json
+*.ass
+
+# Other supported media formats
+*.aac
+*.ogg
+*.opus
+*.wma
+*.mts
+
+# Test/tool caches
+.pytest_cache/
+.ruff_cache/
+htmlcov/
+.coverage

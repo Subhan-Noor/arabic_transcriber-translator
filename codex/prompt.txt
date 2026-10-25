@@ -1,0 +1,21 @@
+Translate every transcript in the transcript/arabic/ folder (timestamped <name>.txt files only; exclude *.flagged.txt, *.plain.txt and backups) into fluent, accurate English. Write each translation as a .txt file with the same filename into the transcript/english/ folder. Fill an existing blank stub, but do not overwrite a nonblank translation unless explicitly instructed.
+
+Follow codex/system_prompt.md.
+
+Use the approved translations explicitly supplied in approved_translations/ (if that optional folder exists) as a translation memory. Whenever identical or substantially similar Arabic appears, reuse the same English wording unless the Arabic clearly requires a different translation. Maintain consistent terminology, phrasing, and style across all files.
+
+The transcripts are automatically generated and may contain OCR or speech-recognition errors. Correct only obvious transcription errors where the intended Arabic is clear from context, established Islamic terminology, or well-known Qur'anic verses and authentic hadith. Do not invent missing content or make interpretive changes.
+
+Preserve every timestamp exactly. Never create, remove, merge, split, or renumber timestamp blocks. The output must contain the same number of timestamped lines as the input.
+
+Before translating each sentence, determine the intended Arabic meaning rather than translating word-by-word. Preserve the original meaning exactly while producing natural English.
+
+When translating Qur'anic verses or authentic hadith, preserve their wording closely. If an approved translation already contains the same quotation, reuse that wording.
+
+Output only the translated timestamped transcript. No headings, notes, explanations, or commentary.
+
+Do not rely on surface spelling alone. Resolve ambiguous undiacritized Arabic morphologically and contextually before translating. In particular, distinguish proper names from derived nouns and adjectives, such as آدم “Adam” versus آدمي “human being/person.”
+
+Do not use any external translation tools, all translations should be done by you (GPT) yourself.
+
+Some parts of the audio cut out and are clearly labelled, you must keep these sections as is.

@@ -1,0 +1,4 @@
+faster-whisper==1.2.1
+torch
+hf_xet==1.5.1
+jupyter==1.1.1
